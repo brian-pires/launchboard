@@ -288,6 +288,8 @@ export default function App() {
   const phaseOf      = pid=>phases.find(p=>p.id===pid);
 
   const openTask = openTaskId ? tasks.find(t=>t.id===openTaskId)||null : null;
+
+  const urgentTasks = tasks
     .filter(t=>!t.done&&t.deadline)
     .map(t=>({...t,days:daysUntil(t.deadline)}))
     .filter(t=>t.days<=7)
