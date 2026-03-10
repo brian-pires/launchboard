@@ -256,7 +256,7 @@ export default function App() {
   }
   function addTask(phaseId) {
     if(!newTaskTitle.trim()) return;
-    const nt={id:"t"+Date.now(),phase:phaseId,title:newTaskTitle.trim(),done:false,assignee:"",deadline:"",comments:[]};
+    const nt={id:"t"+Date.now(),phase:phaseId,title:newTaskTitle.trim(),done:false,assignees:[],deadline:"",comments:[]};
     updateTasks([...tasks,nt]);
     setNewTaskTitle("");
     setAddingTaskPhase(null);
@@ -320,7 +320,7 @@ export default function App() {
     const days=task.deadline?daysUntil(task.deadline):null;
     const urg=days!==null?urgencyLabel(days,task.done):null;
     const overdue=isOverdue(task.deadline,task.done);
-    const member=members.find(m=>m.id===task.assignee);
+    const assignees=(task.assignees||[]).map(id=>members.find(m=>m.id===id)).filter(Boolean);
     return (
       <div onClick={()=>setOpenTask(task)}
         style={{background:"#fff",border:`1px solid ${task.done?"#E8F8F5":overdue?"#FDECEA":"#E8EAF0"}`,
@@ -345,8 +345,13 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
           {task.comments.length>0&&<span style={{fontSize:11,color:"#B0B8C8"}}>💬{task.comments.length}</span>}
           {urg&&<span style={{fontSize:11,fontWeight:700,color:urg.color,background:urg.bg,padding:"2px 7px",borderRadius:99}}>{urg.text}</span>}
-          {member&&<div style={{width:24,height:24,borderRadius:"50%",background:member.color,display:"flex",
-            alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff"}}>{getInitials(member.name)}</div>}
+          <div style={{display:"flex"}}>
+            {assignees.map((m,i)=>(
+              <div key={m.id} style={{width:24,height:24,borderRadius:"50%",background:m.color,display:"flex",
+                alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff",
+                marginLeft:i>0?-6:0,border:"2px solid #fff"}}>{getInitials(m.name)}</div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -452,11 +457,64 @@ export default function App() {
   function TaskPanel() {
     if(!openTask) return null;
     const ph=phaseOf(openTask.phase);
+    const assignees = openTask.assignees || [];
+    const [mentionQuery, setMentionQuery] = useState("");
+    const [showMentions, setShowMentions] = useState(false);
+    const [mentionPos, setMentionPos] = useState(0);
+
+    function toggleAssignee(memberId) {
+      const current = openTask.assignees || [];
+      const updated = current.includes(memberId)
+        ? current.filter(id=>id!==memberId)
+        : [...current, memberId];
+      setField(openTask.id, "assignees", updated);
+    }
+
+    function handleCommentChange(e) {
+      const val = e.target.value;
+      setNewComment(val);
+      const cursorPos = e.target.selectionStart;
+      const textBefore = val.slice(0, cursorPos);
+      const atIndex = textBefore.lastIndexOf("@");
+      if(atIndex !== -1 && !textBefore.slice(atIndex).includes(" ")) {
+        setMentionQuery(textBefore.slice(atIndex+1).toLowerCase());
+        setMentionPos(atIndex);
+        setShowMentions(true);
+      } else {
+        setShowMentions(false);
+      }
+    }
+
+    function insertMention(member) {
+      const before = newComment.slice(0, mentionPos);
+      const after = newComment.slice(mentionPos + mentionQuery.length + 1);
+      setNewComment(`${before}@${member.name} ${after}`);
+      setShowMentions(false);
+    }
+
+    const filteredMembers = members.filter(m=>
+      m.name.toLowerCase().includes(mentionQuery)
+    );
+
+    function renderCommentText(text) {
+      const parts = text.split(/(@\w[\w\s]*)/g);
+      return parts.map((part,i)=> {
+        const m = members.find(m=>`@${m.name}`===part.trim()||text.includes(`@${m.name}`));
+        if(part.startsWith("@")) {
+          const mentioned = members.find(m=>part.trim()===`@${m.name}`);
+          if(mentioned) return <span key={i} style={{color:mentioned.color,fontWeight:700}}>{part}</span>;
+        }
+        return <span key={i}>{part}</span>;
+      });
+    }
+
     return (
       <div style={{position:"fixed",inset:0,background:"#00000040",zIndex:100,display:"flex",justifyContent:"flex-end"}}
         onClick={()=>setOpenTask(null)}>
         <div style={{width:420,background:"#fff",height:"100%",display:"flex",flexDirection:"column",
           boxShadow:"-4px 0 30px #00000020",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+
+          {/* Header */}
           <div style={{padding:"20px 24px 16px",borderBottom:"1px solid #E8EAF0",display:"flex",alignItems:"flex-start",gap:12}}>
             <div onClick={()=>toggleDone(openTask.id)}
               style={{width:22,height:22,marginTop:2,borderRadius:6,border:`2px solid ${openTask.done?"#00B894":"#D0D5DD"}`,
@@ -470,27 +528,31 @@ export default function App() {
             </div>
             <button onClick={()=>setOpenTask(null)} style={{background:"none",border:"none",fontSize:20,color:"#B0B8C8",cursor:"pointer",lineHeight:1}}>×</button>
           </div>
+
+          {/* Assignees — multi-select */}
           <div style={{padding:"16px 24px",borderBottom:"1px solid #F0F1F5"}}>
             <div style={{fontSize:11,fontWeight:600,color:"#8890A0",textTransform:"uppercase",letterSpacing:0.8,marginBottom:10}}>Atribuído a</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-              <button onClick={()=>setField(openTask.id,"assignee","")}
-                style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${!openTask.assignee?"#6C5CE7":"#E8EAF0"}`,
-                  background:!openTask.assignee?"#6C5CE720":"#fff",color:!openTask.assignee?"#6C5CE7":"#8890A0",
-                  fontSize:12,cursor:"pointer",fontWeight:!openTask.assignee?600:400}}>Ninguém</button>
-              {members.map(m=>(
-                <button key={m.id} onClick={()=>setField(openTask.id,"assignee",m.id)}
-                  style={{display:"flex",alignItems:"center",gap:5,padding:"5px 12px",borderRadius:20,
-                    border:`1px solid ${openTask.assignee===m.id?m.color:"#E8EAF0"}`,
-                    background:openTask.assignee===m.id?m.color+"20":"#fff",
-                    color:openTask.assignee===m.id?m.color:"#4A5568",fontSize:12,cursor:"pointer",
-                    fontWeight:openTask.assignee===m.id?600:400}}>
-                  <div style={{width:16,height:16,borderRadius:"50%",background:m.color,display:"flex",
-                    alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:"#fff"}}>{getInitials(m.name)}</div>
-                  {m.name}
-                </button>
-              ))}
+              {members.map(m=>{
+                const selected = assignees.includes(m.id);
+                return (
+                  <button key={m.id} onClick={()=>toggleAssignee(m.id)}
+                    style={{display:"flex",alignItems:"center",gap:5,padding:"5px 12px",borderRadius:20,
+                      border:`1px solid ${selected?m.color:"#E8EAF0"}`,
+                      background:selected?m.color+"20":"#fff",
+                      color:selected?m.color:"#4A5568",fontSize:12,cursor:"pointer",
+                      fontWeight:selected?600:400,transition:"all 0.15s"}}>
+                    <div style={{width:16,height:16,borderRadius:"50%",background:m.color,display:"flex",
+                      alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:"#fff"}}>{getInitials(m.name)}</div>
+                    {m.name}
+                    {selected&&<span style={{fontSize:12}}>✓</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {/* Deadline */}
           <div style={{padding:"16px 24px",borderBottom:"1px solid #F0F1F5"}}>
             <div style={{fontSize:11,fontWeight:600,color:"#8890A0",textTransform:"uppercase",letterSpacing:0.8,marginBottom:10}}>Data limite</div>
             <input type="date" value={openTask.deadline} onChange={e=>setField(openTask.id,"deadline",e.target.value)}
@@ -503,6 +565,8 @@ export default function App() {
               </div>;
             })()}
           </div>
+
+          {/* Comments */}
           <div style={{padding:"16px 24px",flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
             <div style={{fontSize:11,fontWeight:600,color:"#8890A0",textTransform:"uppercase",letterSpacing:0.8,marginBottom:12}}>
               Comentários ({openTask.comments.length})
@@ -517,17 +581,53 @@ export default function App() {
                     <span style={{fontSize:12,fontWeight:600,color:"#1A2233"}}>{c.author}</span>
                     <span style={{fontSize:11,color:"#B0B8C8"}}>{new Date(c.time).toLocaleDateString("pt-PT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
                   </div>
-                  <div style={{marginLeft:32,background:"#F7F8FC",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#4A5568",lineHeight:1.5}}>{c.text}</div>
+                  <div style={{marginLeft:32,background:"#F7F8FC",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#4A5568",lineHeight:1.5}}>
+                    {renderCommentText(c.text)}
+                  </div>
                 </div>
               ))}
             </div>
-            <div style={{display:"flex",gap:8}}>
-              <input ref={commentRef} value={newComment} onChange={e=>setNewComment(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&addComment(openTask.id)}
-                placeholder="Escreve um comentário..."
-                style={{flex:1,padding:"9px 12px",border:"1px solid #E8EAF0",borderRadius:8,fontSize:13,outline:"none",color:"#1A2233"}}/>
-              <button onClick={()=>addComment(openTask.id)}
-                style={{background:"#6C5CE7",border:"none",borderRadius:8,padding:"0 14px",color:"#fff",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center"}}>→</button>
+
+            {/* Comment input with @mention */}
+            <div style={{position:"relative"}}>
+              {showMentions && filteredMembers.length>0 && (
+                <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"#fff",
+                  border:"1px solid #E8EAF0",borderRadius:8,boxShadow:"0 4px 16px #00000015",
+                  marginBottom:4,zIndex:10,overflow:"hidden"}}>
+                  {filteredMembers.map(m=>(
+                    <div key={m.id} onClick={()=>insertMention(m)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",cursor:"pointer",transition:"background 0.1s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#F7F8FC"}
+                      onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                      <div style={{width:22,height:22,borderRadius:"50%",background:m.color,display:"flex",
+                        alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:700,color:"#fff"}}>{getInitials(m.name)}</div>
+                      <span style={{fontSize:13,color:"#1A2233",fontWeight:500}}>{m.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                <div style={{flex:1,position:"relative"}}>
+                  <textarea
+                    ref={commentRef}
+                    value={newComment}
+                    onChange={handleCommentChange}
+                    onKeyDown={e=>{
+                      if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addComment(openTask.id);}
+                      if(e.key==="Escape") setShowMentions(false);
+                    }}
+                    placeholder="Escreve um comentário... (usa @ para mencionar alguém)"
+                    rows={2}
+                    style={{width:"100%",padding:"9px 12px",border:"1px solid #E8EAF0",borderRadius:8,
+                      fontSize:13,outline:"none",color:"#1A2233",resize:"none",boxSizing:"border-box",
+                      fontFamily:"inherit",lineHeight:1.5}}
+                  />
+                  <div style={{fontSize:10,color:"#C0C8D8",marginTop:2}}>Enter para enviar · Shift+Enter para nova linha</div>
+                </div>
+                <button onClick={()=>addComment(openTask.id)}
+                  style={{background:"#6C5CE7",border:"none",borderRadius:8,padding:"10px 14px",
+                    color:"#fff",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0,marginBottom:16}}>→</button>
+              </div>
             </div>
           </div>
         </div>
