@@ -181,7 +181,7 @@ export default function App() {
   const [members, setMembers] = useState(INITIAL_MEMBERS);
   const [loaded,  setLoaded]  = useState(false);
   const [view,    setView]    = useState("dashboard");
-  const [openTask, setOpenTask] = useState(null);
+  const [openTaskId, setOpenTaskId] = useState(null);
   const [newComment, setNewComment] = useState("");
   const [filter, setFilter]   = useState("all");
   const [saving, setSaving]   = useState(false);
@@ -235,24 +235,21 @@ export default function App() {
   function toggleDone(id) {
     const u = tasks.map(t=>t.id===id?{...t,done:!t.done}:t);
     updateTasks(u);
-    if(openTask?.id===id) setOpenTask(u.find(t=>t.id===id));
   }
   function setField(id,field,value) {
     const u = tasks.map(t=>t.id===id?{...t,[field]:value}:t);
     updateTasks(u);
-    if(openTask?.id===id) setOpenTask(u.find(t=>t.id===id));
   }
   function addComment(taskId) {
     if(!newComment.trim()) return;
     const c={id:Date.now(),text:newComment.trim(),author:"Tu",time:new Date().toISOString()};
     const u=tasks.map(t=>t.id===taskId?{...t,comments:[...t.comments,c]}:t);
     updateTasks(u);
-    setOpenTask(u.find(t=>t.id===taskId));
     setNewComment("");
   }
   function deleteTask(id) {
     updateTasks(tasks.filter(t=>t.id!==id));
-    if(openTask?.id===id) setOpenTask(null);
+    if(openTaskId===id) setOpenTaskId(null);
   }
   function addTask(phaseId) {
     if(!newTaskTitle.trim()) return;
@@ -290,7 +287,7 @@ export default function App() {
   const activePhase  = phases.find(p=>p.id===view);
   const phaseOf      = pid=>phases.find(p=>p.id===pid);
 
-  const urgentTasks = tasks
+  const openTask = openTaskId ? tasks.find(t=>t.id===openTaskId)||null : null;
     .filter(t=>!t.done&&t.deadline)
     .map(t=>({...t,days:daysUntil(t.deadline)}))
     .filter(t=>t.days<=7)
@@ -322,7 +319,7 @@ export default function App() {
     const overdue=isOverdue(task.deadline,task.done);
     const assignees=(task.assignees||[]).map(id=>members.find(m=>m.id===id)).filter(Boolean);
     return (
-      <div onClick={()=>setOpenTask(task)}
+      <div onClick={()=>setOpenTaskId(task.id)}
         style={{background:"#fff",border:`1px solid ${task.done?"#E8F8F5":overdue?"#FDECEA":"#E8EAF0"}`,
           borderLeft:`3px solid ${task.done?"#00B894":overdue?"#E74C3C":(ph?.color||"#ccc")}`,
           borderRadius:10,padding:"12px 14px",marginBottom:7,cursor:"pointer",
@@ -510,7 +507,7 @@ export default function App() {
 
     return (
       <div style={{position:"fixed",inset:0,background:"#00000040",zIndex:100,display:"flex",justifyContent:"flex-end"}}
-        onClick={()=>setOpenTask(null)}>
+        onClick={()=>setOpenTaskId(null)}>
         <div style={{width:420,background:"#fff",height:"100%",display:"flex",flexDirection:"column",
           boxShadow:"-4px 0 30px #00000020",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
 
@@ -526,7 +523,7 @@ export default function App() {
               {ph&&<span style={{background:ph.color+"20",color:ph.color,fontSize:10,fontWeight:600,
                 padding:"2px 8px",borderRadius:99,marginTop:4,display:"inline-block"}}>{ph.label}</span>}
             </div>
-            <button onClick={()=>setOpenTask(null)} style={{background:"none",border:"none",fontSize:20,color:"#B0B8C8",cursor:"pointer",lineHeight:1}}>×</button>
+            <button onClick={()=>setOpenTaskId(null)} style={{background:"none",border:"none",fontSize:20,color:"#B0B8C8",cursor:"pointer",lineHeight:1}}>×</button>
           </div>
 
           {/* Assignees — multi-select */}
